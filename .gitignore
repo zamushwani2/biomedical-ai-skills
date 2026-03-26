@@ -1,0 +1,64 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data
+*.h5ad
+*.rds
+*.RData
+*.hdf5
+*.bam
+*.bai
+*.sam
+*.vcf
+*.vcf.gz
+*.fastq
+*.fastq.gz
+*.bed
+*.bigwig
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+*.key
+*.pem
+
+# Node
+node_modules/
+
+# Local
+TODO.md
+plans/
+docs/
+mcp-servers/
+scripts/
+mnt/
+drafts/
