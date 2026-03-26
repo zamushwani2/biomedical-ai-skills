@@ -8,4 +8,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - cancer-multiomics skill: expression analysis with DESeq2 v1.50+, pathway analysis (GSEA/ORA/GSVA/ssGSEA), gene ID conversion, batch correction, visualization
+- cancer-multiomics skill: mutation analysis with maftools v2.22+ (MAF handling, TMB, mutational signatures, driver detection), CNV analysis (segment processing, GISTIC2.0, gene-level mapping)
 - Repository structure, contributing guidelines, security policy
