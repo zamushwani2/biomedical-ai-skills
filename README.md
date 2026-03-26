@@ -6,7 +6,7 @@ SKILL.md files that teach AI coding agents how to do cancer biology and multi-om
 
 | Skill | What it covers |
 |-------|----------------|
-| [`cancer-multiomics`](skills/cancer-multiomics/) | TCGA/GEO data retrieval, differential expression (DESeq2), pathway analysis (GSEA, ORA, GSVA), gene ID conversion, batch correction |
+| [`cancer-multiomics`](skills/cancer-multiomics/) | TCGA/GEO data retrieval, differential expression (DESeq2), pathway analysis (GSEA, ORA, GSVA), mutation analysis (maftools, TMB, signatures), copy number variation (GISTIC2, segment analysis), gene ID conversion, batch correction |
 
 ## Usage
 
