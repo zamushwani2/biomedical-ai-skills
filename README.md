@@ -1,8 +1,6 @@
 # Biomedical AI Skills
 
-SKILL.md files for cancer bioinformatics. Drop one into your project and your AI coding agent stops getting the normalization order wrong, using the wrong genome build, or running GSEA on filtered gene lists.
-
-Compatible with Claude Code, Cursor, Codex CLI, and Gemini CLI.
+SKILL.md files that teach AI coding agents how to do cancer biology and multi-omics research correctly. Compatible with Claude Code, Cursor, Codex CLI, and Gemini CLI.
 
 ## Skills
 

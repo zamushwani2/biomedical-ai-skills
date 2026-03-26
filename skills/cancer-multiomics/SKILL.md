@@ -303,74 +303,210 @@ After running expression analysis, verify:
 
 ## Mutation Analysis
 
-### Load and Visualize
+### Data Retrieval
 
 ```r
-library(maftools)  # v2.18+
-maf <- read.maf(maf = "TCGA.LUAD.maf.gz", clinicalData = clinical_df)
+library(TCGAbiolinks)
+library(maftools)  # v2.22+, Bioconductor 3.22
 
-# Summary statistics
+# Method 1: GDCquery_Maf (downloads open-access MAF, hg38-aligned)
+# Pipelines: mutect2, muse, varscan2, somaticsniper
+maf_df <- GDCquery_Maf("LUAD", pipelines = "mutect2")
+maf <- read.maf(maf = maf_df, clinicalData = clinical_df)
+
+# Method 2: GDC query (more control over filters)
+query_maf <- GDCquery(
+  project = "TCGA-LUAD",
+  data.category = "Simple Nucleotide Variation",
+  data.type = "Masked Somatic Mutation",
+  access = "open"
+)
+GDCdownload(query_maf, directory = "GDCdata")
+maf_file <- GDCprepare(query_maf, directory = "GDCdata")
+maf <- read.maf(maf = maf_file, clinicalData = clinical_df)
+```
+
+### Pipeline Selection
+
+```
+Which caller to use?
+  Multi-caller consensus (MC3) -> Most stringent, used in TCGA PanCancer Atlas
+    Access via: maftools::tcgaLoad(study = "LUAD")
+  Single caller:
+    MuTect2 -> Best sensitivity for low-frequency variants
+    MuSE -> Good for paired tumor-normal, models tumor heterogeneity
+    VarScan2 -> Works with and without matched normal
+    SomaticSniper -> Bayesian, good specificity
+  For most analyses -> MuTect2 or MC3 consensus
+```
+
+### Visualization
+
+```r
 plotmafSummary(maf, rmOutlier = TRUE, addStat = "median")
 
-# Oncoplot: top 20 mutated genes with clinical annotations
-oncoplot(maf, top = 20, clinicalFeatures = c("ajcc_pathologic_stage"))
+oncoplot(maf, top = 20,
+  clinicalFeatures = c("ajcc_pathologic_stage", "gender"),
+  sortByAnnotation = TRUE)
 
-# Lollipop plot for specific gene
-lollipopPlot(maf, gene = "TP53", AACol = "HGVSp_Short")
+# Lollipop: protein domain plot for a single gene
+lollipopPlot(maf, gene = "TP53", AACol = "HGVSp_Short",
+  showMutationRate = TRUE)
 
-# Rainfall plot (inter-mutation distance)
+# Rainfall: inter-mutation distance, detects kataegis (localized hypermutation)
 rainfallPlot(maf, detectChangePoints = TRUE, pointSize = 0.4)
+```
+
+### Tumor Mutation Burden
+
+```r
+# TMB = total nonsynonymous mutations / capture region size (MB)
+laml.tmb <- tmb(maf, captureSize = 50, logScale = TRUE)
+
+# Compare against all 33 TCGA cohorts (uses MC3 data, 35.8 MB capture)
+tcgaCompare(maf, cohortName = "LUAD-study", logscale = TRUE,
+  capture_size = 50)
+# Useful for: immunotherapy response prediction (TMB-high cutoff varies by cancer type)
+```
+
+### Somatic Interactions
+
+```r
+# Pairwise Fisher's exact test for co-occurrence and mutual exclusivity
+somaticInteractions(maf, top = 25, pvalue = c(0.05, 0.01))
+# Green = co-occurring, brown = mutually exclusive
+# Classic examples: TP53 + KRAS co-occurrence in LUAD; EGFR vs KRAS mutual exclusivity
+```
+
+### Clinical Enrichment
+
+```r
+# Test which mutations are enriched in clinical subgroups
+ce <- clinicalEnrichment(maf, clinicalFeature = "ajcc_pathologic_stage")
+ce$groupwise_comparision[p_value < 0.05]
+plotEnrichmentResults(ce, pvalue = 0.05, geneFontSize = 0.8)
 ```
 
 ### Mutational Signatures
 
 ```r
-# Trinucleotide context extraction
-# Requires >= 30 samples for reliable signature extraction
-tnm <- trinucleotideMatrix(maf, ref_genome = "BSgenome.Hsapiens.UCSC.hg38")
+library(BSgenome.Hsapiens.UCSC.hg38)
 
-# Extract de novo signatures via NMF
-# nTry: test range 2-8, select by cophenetic correlation
-sig <- extractSignatures(tnm, nTry = 6, plotBestFitRes = FALSE)
+# Step 1: Extract trinucleotide context matrix (96 substitution classes)
+# Needs >= 30 samples for reliable decomposition
+tnm <- trinucleotideMatrix(maf, prefix = "chr", add = TRUE,
+  ref_genome = "BSgenome.Hsapiens.UCSC.hg38")
 
-# Compare to COSMIC SBS v3.4 signatures
-cosim <- compareSignatures(sig, sig_db = "SBS")
-# cosim$cosine_similarities: matrix of cosine similarity scores
-# Assignment: map each sample to dominant COSMIC signature
-```
+# Step 2: Estimate optimal number of signatures (cophenetic correlation)
+est <- estimateSignatures(mat = tnm, nTry = 6)
+# Look for the elbow in the cophenetic plot
 
-### Co-occurrence and Mutual Exclusivity
+# Step 3: Extract n signatures via NMF
+sig <- extractSignatures(mat = tnm, n = 3)  # n from step 2
 
-```r
-# Somatic interactions: pairwise Fisher's test
-somaticInteractions(maf, top = 25, pvalue = c(0.05, 0.01))
+# Step 4: Compare to COSMIC
+# "legacy" = 30 COSMIC v2 signatures, "SBS" = 65 COSMIC v3 signatures
+cosim <- compareSignatures(nmfRes = sig, sig_db = "SBS")
+# cosim$cosine_similarities: sample x COSMIC matrix
+# Match: cosine similarity > 0.85 is a confident assignment
+
+plotSignatures(sig, contributions = FALSE)  # signature profiles
+plotSignatures(sig, contributions = TRUE)   # per-sample contributions
 ```
 
 ### Driver Gene Detection
 
 ```r
-# dN/dS based driver detection
-oncodrive_res <- maftools::oncodrive(maf, minMut = 5, pvalMethod = "zscore")
+# oncodrive: identifies genes with clustered mutations (positional clustering)
+# Not dN/dS — uses the concept that driver mutations cluster in specific protein regions
+oncodrive_res <- oncodrive(maf, AACol = "HGVSp_Short", minMut = 5,
+  pvalMethod = "zscore")
 plotOncodrive(oncodrive_res, fdrCutOff = 0.1, useFraction = TRUE)
+
+# For proper dN/dS analysis, use the dndscv package separately:
+# library(dndscv); dndsout <- dndscv(mutations_df)
 ```
 
 ## Copy Number Analysis
 
+### Data Retrieval
+
 ```r
-# Read GISTIC2.0 output files
+library(TCGAbiolinks)
+
+# Download masked copy number segments (preferred: excludes germline-prone regions)
+query_cnv <- GDCquery(
+  project = "TCGA-LUAD",
+  data.category = "Copy Number Variation",
+  data.type = "Masked Copy Number Segment"
+)
+GDCdownload(query_cnv, directory = "GDCdata")
+cnv_seg <- GDCprepare(query_cnv, directory = "GDCdata")
+# Returns: Sample, Chromosome, Start, End, Num_Probes, Segment_Mean
+# Segment_Mean is log2(copy_number / 2): 0 = diploid, >0 = gain, <0 = loss
+```
+
+### Segment Interpretation
+
+```
+Segment_Mean thresholds (log2 ratio):
+  > 0.3   -> Gain
+  > 0.7   -> Amplification (high-level gain)
+  < -0.3  -> Loss (heterozygous deletion)
+  < -0.7  -> Deep deletion (likely homozygous)
+  These are conventions, not absolute cutoffs. Adjust based on tumor purity.
+```
+
+### GISTIC2.0 Analysis
+
+```r
+# GISTIC identifies recurrent focal CNV events across a cohort
+# Pre-computed GISTIC results available from Firehose/GDAC for most TCGA cancers:
+# https://gdac.broadinstitute.org/
+
+# Read GISTIC output with maftools
 gistic <- readGistic(
   gisticAllLesionsFile = "all_lesions.conf_99.txt",
   gisticAmpGenesFile = "amp_genes.conf_99.txt",
   gisticDelGenesFile = "del_genes.conf_99.txt",
-  gisticScoresFile = "scores.gistic"
+  gisticScoresFile = "scores.gistic",
+  isTCGA = TRUE
 )
 
-gisticChromPlot(gistic)        # genome-wide significance
-gisticBubblePlot(gistic)       # bubble plot of recurrent CNVs
-gisticOncoPlot(gistic, top = 10)  # oncoplot with focal events
+gisticChromPlot(gistic)            # genome-wide q-values per arm
+gisticBubblePlot(gistic)           # focal events with significance
+gisticOncoPlot(gistic, top = 10)   # oncoplot of recurrent CNVs
+```
 
-# Integration: add CNV to mutation oncoplot
-oncoplot(maf, top = 20, additionalFeature = list(cnv_data))
+### Gene-Level Copy Number from Segments
+
+```r
+# Map segments to genes when GISTIC output is not available
+library(GenomicRanges)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+genes <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene)
+seg_gr <- GRanges(
+  seqnames = paste0("chr", cnv_seg$Chromosome),
+  ranges = IRanges(start = cnv_seg$Start, end = cnv_seg$End),
+  segment_mean = cnv_seg$Segment_Mean,
+  sample = cnv_seg$Sample
+)
+
+# Find overlaps: assign segment value to each gene
+hits <- findOverlaps(genes, seg_gr)
+# For genes spanning multiple segments, use the segment with largest overlap
+```
+
+### Integration: Mutation + CNV
+
+```r
+# Add CNV data to MAF object for combined oncoplot
+# cnv_table: data.frame with columns: Gene, Sample_name, CN (amp/del)
+oncoplot(maf, top = 20,
+  additionalFeature = list(cnv_data),
+  additionalFeaturePch = 15,
+  additionalFeatureCol = c(amp = "red", del = "blue"))
 ```
 
 ## Methylation Analysis
@@ -417,14 +553,27 @@ common_patients <- intersect(
 
 ## Common Pitfalls
 
+### Expression
 1. **DESeq2 input**: Using FPKM/TPM as input. DESeq2 requires raw integer counts.
-2. **Genome build mismatch**: TCGA legacy archive uses hg19, GDC harmonized uses hg38. Never mix builds. Check with `GenomeInfoDb::genome(se)`.
-3. **Signature sample size**: Running mutational signature extraction on < 30 samples yields unreliable results.
-4. **Methylation cutoffs**: Using fixed delta-beta cutoffs without statistical testing. Use DMP/DMR methods.
-5. **Tumor purity**: TCGA samples range 20-95% purity. Use ESTIMATE or ABSOLUTE purity scores to filter (> 60%) or include as covariate.
-6. **Pre-filtering GSEA input**: GSEA requires the full ranked gene list. Never pre-filter to significant genes only (that is ORA, not GSEA).
-7. **Gene ID mismatch**: TCGA uses Ensembl IDs with version suffixes (ENSG00000141510.18). Strip versions before mapping: `sub("\\..*", "", ensembl_ids)`.
-8. **LFC shrinkage for hypothesis testing**: apeglm shrinkage is for ranking and visualization. Use unshrunken results for strict significance calls unless using `lfcThreshold > 0`.
+2. **Pre-filtering GSEA input**: GSEA requires the full ranked gene list. Never pre-filter to significant genes only (that is ORA, not GSEA).
+3. **LFC shrinkage for hypothesis testing**: apeglm shrinkage is for ranking and visualization. Use unshrunken results for strict significance calls unless using `lfcThreshold > 0`.
+4. **Gene ID mismatch**: TCGA uses Ensembl IDs with version suffixes (ENSG00000141510.18). Strip versions before mapping: `sub("\\..*", "", ensembl_ids)`.
+
+### Mutation
+5. **Mixing callers**: Different variant callers produce different mutation sets. Pick one pipeline (or use MC3 consensus) and stick with it across the cohort.
+6. **Signature sample size**: Extracting signatures from < 30 samples is unreliable. For small cohorts, fit to known COSMIC signatures instead of de novo extraction.
+7. **Reference genome for signatures**: `trinucleotideMatrix()` requires the correct BSgenome. GDC harmonized data uses hg38 — using hg19 reference silently produces wrong trinucleotide contexts.
+8. **TMB capture size**: `tcgaCompare()` uses 35.8 MB (Agilent SureSelect). If your data uses a different capture kit, set `capture_size` accordingly or TMB comparison is meaningless.
+
+### Copy Number
+9. **Segment_Mean interpretation**: Segment_Mean is log2(CN/2), not raw copy number. A value of 0.0 is diploid, not zero copies.
+10. **CNV thresholds and purity**: Fixed cutoffs (>0.3 gain, <-0.3 loss) assume high tumor purity. Low-purity samples compress the signal — a real amplification may show Segment_Mean of only 0.2.
+
+### General
+11. **Genome build mismatch**: TCGA legacy archive uses hg19, GDC harmonized uses hg38. Never mix builds across data types. Check with `GenomeInfoDb::genome(se)`.
+12. **Tumor purity**: TCGA samples range 20-95% purity. Use ESTIMATE or ABSOLUTE purity scores to filter (> 60%) or include as covariate.
+13. **TCGA barcode matching**: When integrating data types, match on patient barcode (first 12 characters), not full barcode. A patient may have multiple aliquots.
+14. **Methylation cutoffs**: Using fixed delta-beta cutoffs without statistical testing. Use DMP/DMR methods.
 
 ## Related Skills
 
