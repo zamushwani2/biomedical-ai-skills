@@ -20,22 +20,12 @@ SKILL.md files for cancer bioinformatics. Drop one into your project and your AI
 ---
 
 ```mermaid
-flowchart LR
-    A["Copy SKILL.md\ninto your project"] --> B["AI agent reads\ndomain protocols"]
-    B --> C["Generates correct\nbioinformatics code"]
-
-    C --> D["Expression\nDESeq2 · GSEA"]
-    C --> E["Mutation\nmaftools · TMB"]
-    C --> F["Copy Number\nGISTIC2"]
-    C --> G["Methylation\nminfi · DMRcate"]
-
-    style A fill:#1a1a2e,stroke:#00d9ff,color:#fff
-    style B fill:#1a1a2e,stroke:#4ecdc4,color:#fff
-    style C fill:#1a1a2e,stroke:#ff6b6b,color:#fff
-    style D fill:#1a1a2e,stroke:#276DC3,color:#fff
-    style E fill:#1a1a2e,stroke:#276DC3,color:#fff
-    style F fill:#1a1a2e,stroke:#276DC3,color:#fff
-    style G fill:#1a1a2e,stroke:#276DC3,color:#fff
+graph LR
+    A["Browse skills"] --> B["Copy SKILL.md<br>to your project"] --> C["Agent reads<br>domain protocols"] --> D["Correct code with<br>tested parameters"]
+    style A fill:#1a1a2e,stroke:#00d9ff,color:#fff,stroke-width:2px
+    style B fill:#1a1a2e,stroke:#4ecdc4,color:#fff,stroke-width:2px
+    style C fill:#1a1a2e,stroke:#ff6b6b,color:#fff,stroke-width:2px
+    style D fill:#1a1a2e,stroke:#87b13f,color:#fff,stroke-width:2px
 ```
 
 ## Skills
