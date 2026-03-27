@@ -11,7 +11,7 @@ SKILL.md files for cancer bioinformatics. Drop one into your project and your AI
 [![R](https://img.shields.io/badge/R-≥_4.3-276DC3?style=flat-square&logo=r&logoColor=white&labelColor=1a1a2e)](https://www.r-project.org/)
 [![Bioconductor](https://img.shields.io/badge/Bioconductor-3.19-87b13f?style=flat-square&labelColor=1a1a2e)](https://bioconductor.org/)
 [![TCGA](https://img.shields.io/badge/TCGA-GDC_Portal-e84d3c?style=flat-square&labelColor=1a1a2e)](https://portal.gdc.cancer.gov/)
-[![Skills](https://img.shields.io/badge/Skills-1-00d9ff?style=flat-square&labelColor=1a1a2e)](skills/)
+[![Skills](https://img.shields.io/badge/Skills-2-00d9ff?style=flat-square&labelColor=1a1a2e)](skills/)
 
 **Works with** Claude Code · Cursor · Codex CLI · Gemini CLI
 
@@ -33,6 +33,7 @@ graph LR
 | Skill | Description |
 |-------|-------------|
 | [`cancer-multiomics`](skills/cancer-multiomics/) | Multi-omics analysis for [TCGA](https://portal.gdc.cancer.gov/)/[GEO](https://www.ncbi.nlm.nih.gov/geo/) — expression ([DESeq2](https://bioconductor.org/packages/DESeq2/)), mutation ([maftools](https://bioconductor.org/packages/maftools/)), CNV ([GISTIC2](https://www.broadinstitute.org/cancer/cga/gistic)), methylation ([minfi](https://bioconductor.org/packages/minfi/), [DMRcate](https://bioconductor.org/packages/DMRcate/)) |
+| [`immune-deconvolution`](skills/immune-deconvolution/) | Tumor microenvironment estimation via [immunedeconv](https://omnideconv.org/immunedeconv/) — [quanTIseq](https://icbi.i-med.ac.at/software/quantiseq/doc/), [EPIC](https://github.com/GfellerLab/EPIC), CIBERSORT, [xCell](https://xcell.ucsf.edu/), [MCP-counter](https://github.com/ebecht/MCPcounter), TIMER, ESTIMATE, tumor purity correction |
 
 ## Quick start
 
