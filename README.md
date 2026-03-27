@@ -30,18 +30,9 @@ graph LR
 
 ## Skills
 
-### [`cancer-multiomics`](skills/cancer-multiomics/)
-
-Multi-omics analysis for [TCGA](https://portal.gdc.cancer.gov/) and [GEO](https://www.ncbi.nlm.nih.gov/geo/) cancer datasets.
-
-| Data type | Tools | Methods |
-|-----------|-------|---------|
-| **Expression** | [DESeq2](https://bioconductor.org/packages/DESeq2/), [clusterProfiler](https://bioconductor.org/packages/clusterProfiler/) | Differential expression, GSEA, ORA, GSVA, ssGSEA |
-| **Mutation** | [maftools](https://bioconductor.org/packages/maftools/) | Driver detection, TMB calculation, mutational signatures |
-| **Copy number** | [GISTIC2](https://www.broadinstitute.org/cancer/cga/gistic) | Segment analysis, gain/loss classification, gene-level mapping |
-| **Methylation** | [minfi](https://bioconductor.org/packages/minfi/), [ChAMP](https://bioconductor.org/packages/ChAMP/), [DMRcate](https://bioconductor.org/packages/DMRcate/) | DMPs, DMRs, CIMP subtyping, methylation-expression integration |
-
-[Validation tests](skills/cancer-multiomics/tests/) benchmarked against TCGA-LUAD.
+| Skill | Description |
+|-------|-------------|
+| [`cancer-multiomics`](skills/cancer-multiomics/) | Multi-omics analysis for [TCGA](https://portal.gdc.cancer.gov/)/[GEO](https://www.ncbi.nlm.nih.gov/geo/) — expression ([DESeq2](https://bioconductor.org/packages/DESeq2/)), mutation ([maftools](https://bioconductor.org/packages/maftools/)), CNV ([GISTIC2](https://www.broadinstitute.org/cancer/cga/gistic)), methylation ([minfi](https://bioconductor.org/packages/minfi/), [DMRcate](https://bioconductor.org/packages/DMRcate/)) |
 
 ## Quick start
 
