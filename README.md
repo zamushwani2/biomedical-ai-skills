@@ -1,6 +1,6 @@
 <div align="center">
 
-# Biomedical AI Skills
+# Biomedical Skills
 
 SKILL.md files for cancer bioinformatics. Drop one into your project and your AI coding agent handles TCGA data, normalization, and statistics correctly.
 
