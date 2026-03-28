@@ -35,6 +35,8 @@ graph LR
 | [`cancer-multiomics`](skills/cancer-multiomics/) | Multi-omics analysis for [TCGA](https://portal.gdc.cancer.gov/)/[GEO](https://www.ncbi.nlm.nih.gov/geo/) — expression ([DESeq2](https://bioconductor.org/packages/DESeq2/)), mutation ([maftools](https://bioconductor.org/packages/maftools/)), CNV ([GISTIC2](https://www.broadinstitute.org/cancer/cga/gistic)), methylation ([minfi](https://bioconductor.org/packages/minfi/), [DMRcate](https://bioconductor.org/packages/DMRcate/)) |
 | [`immune-deconvolution`](skills/immune-deconvolution/) | Tumor microenvironment estimation via [immunedeconv](https://omnideconv.org/immunedeconv/) — [quanTIseq](https://icbi.i-med.ac.at/software/quantiseq/doc/), [EPIC](https://github.com/GfellerLab/EPIC), CIBERSORT, [xCell](https://xcell.ucsf.edu/), [MCP-counter](https://github.com/ebecht/MCPcounter), TIMER, ESTIMATE, tumor purity correction |
 
+Each skill includes validation tests: [`cancer-multiomics`](skills/cancer-multiomics/tests/) against TCGA-LUAD, [`immune-deconvolution`](skills/immune-deconvolution/tests/) against TCGA-BRCA.
+
 ## Quick start
 
 ```bash
