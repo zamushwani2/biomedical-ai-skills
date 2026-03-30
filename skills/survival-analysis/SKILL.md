@@ -438,8 +438,8 @@ WHO 2021 note:
 
 ## Related Skills
 
-- `cancer-multiomics`: TCGA data retrieval, gene expression, mutation status for Cox covariates
-- `immune-deconvolution`: Immune cell scores as survival predictors
+- [`cancer-multiomics`](../cancer-multiomics/SKILL.md): TCGA data retrieval, mutation status and gene expression for Cox covariates
+- [`immune-deconvolution`](../immune-deconvolution/SKILL.md): Immune cell fraction estimates as continuous survival predictors
 
 ## Public Datasets for Testing
 

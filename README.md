@@ -42,11 +42,16 @@ graph LR
 git clone https://github.com/zamushwani2/biomedical-ai-skills.git
 ```
 
-Copy a skill into your project:
+Copy one or more skills into your project:
 
 ```bash
-# Claude Code
+# Claude Code — single skill
+cp skills/cancer-multiomics/SKILL.md your-project/.claude/skills/cancer-multiomics.md
+
+# Claude Code — full pipeline (multiomics → deconvolution → survival)
 cp skills/cancer-multiomics/SKILL.md your-project/.claude/skills/
+cp skills/immune-deconvolution/SKILL.md your-project/.claude/skills/
+cp skills/survival-analysis/SKILL.md your-project/.claude/skills/
 
 # Cursor
 cp skills/cancer-multiomics/SKILL.md your-project/.cursor/skills/
@@ -54,6 +59,8 @@ cp skills/cancer-multiomics/SKILL.md your-project/.cursor/skills/
 # Any agent that reads SKILL.md
 cp skills/cancer-multiomics/SKILL.md your-project/SKILL.md
 ```
+
+Skills cross-reference each other — the agent can chain multiomics data retrieval through deconvolution into survival modeling.
 
 ## What's a SKILL.md?
 

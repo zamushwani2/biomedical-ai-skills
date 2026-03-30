@@ -930,10 +930,8 @@ After running methylation analysis, verify:
 
 ## Related Skills
 
-- `immune-deconvolution`: Estimate immune cell composition from expression data
-- `survival-analysis`: Build prognostic models from multi-omics features
-- `variant-annotation`: Annotate and classify somatic mutations
-- `data-visualization`: Publication-quality volcano plots, heatmaps, KM curves
+- [`immune-deconvolution`](../immune-deconvolution/SKILL.md): Estimate immune cell composition from the expression data produced here
+- [`survival-analysis`](../survival-analysis/SKILL.md): Build prognostic models using mutation, expression, and methylation features as Cox covariates
 
 ## Public Datasets for Testing
 

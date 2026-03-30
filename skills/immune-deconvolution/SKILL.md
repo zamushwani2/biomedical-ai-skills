@@ -466,8 +466,8 @@ When to use scRNA-seq-based methods vs signature-based:
 
 ## Related Skills
 
-- `cancer-multiomics`: TCGA data retrieval, expression analysis, mutation, CNV, methylation
-- `survival-analysis`: Correlate immune infiltration with patient outcomes
+- [`cancer-multiomics`](../cancer-multiomics/SKILL.md): TCGA data retrieval and expression matrix preparation (input for deconvolution)
+- [`survival-analysis`](../survival-analysis/SKILL.md): Use deconvolution scores as covariates in Cox models or KM stratification
 
 ## Public Datasets for Testing
 
