@@ -1,6 +1,6 @@
 # Single-Cell Atlas Construction
 
-QC, preprocessing, integration, clustering, and cell type annotation of single-cell RNA-seq data using Seurat v5 (R) and scanpy (Python). Covers MAD-based quality filtering, doublet detection, normalization, batch integration, Leiden clustering, and automated annotation.
+Full single-cell RNA-seq pipeline from raw counts to biological interpretation. Covers QC, normalization, batch integration, clustering, annotation, pseudobulk DE, trajectory inference, cell-cell communication, and TF activity. Dual-language: Seurat v5 (R) and scanpy (Python).
 
 ## When to Use This Skill
 
@@ -15,6 +15,10 @@ Activate when the user requests:
 - Clustering and resolution selection
 - Automated or marker-based cell type annotation
 - UMAP visualization
+- Differential expression between conditions (pseudobulk)
+- Trajectory inference and RNA velocity
+- Cell-cell communication analysis
+- Transcription factor activity and gene regulatory networks
 
 ## Inputs
 
@@ -712,6 +716,310 @@ DotPlot(obj, features = c("IL7R", "CD8A", "MS4A1", "GNLY", "CD14",
   RotatedAxis()
 ```
 
+---
+
+## Differential Expression (Pseudobulk)
+
+```
+Why pseudobulk and not Wilcoxon/t-test on single cells:
+  Cells from the same donor are not independent.
+  Cell-level tests treat 5000 cells from 3 donors as n=5000, not n=3.
+  This inflates significance: thousands of false positives.
+  Squair et al. 2021, Zimmerman et al. 2021 both showed pseudobulk methods
+  outperform cell-level tests for cross-condition comparisons.
+
+  When cell-level tests are OK:
+    Marker gene discovery within a single sample (no cross-sample comparison).
+    FindAllMarkers for cluster markers is fine — it's within-sample.
+
+  When pseudobulk is required:
+    Any comparison across conditions, treatments, or donors.
+```
+
+### Pseudobulk with DESeq2 (R)
+
+```r
+library(DESeq2)
+
+# Aggregate raw counts: sum per gene, grouped by sample + cell_type
+# Seurat v5: JoinLayers first, then extract counts
+obj <- JoinLayers(obj)
+counts <- obj[["RNA"]]$counts
+
+pb <- aggregate(t(as.matrix(counts)),
+  by = list(sample = obj$sample_id, cell_type = obj$cell_type),
+  FUN = sum)
+# Reshape to genes x pseudobulk_samples matrix
+# Or use scuttle::aggregateAcrossCells (cleaner)
+
+# With scuttle (recommended)
+library(scuttle)
+sce <- as.SingleCellExperiment(obj)
+pb_sce <- aggregateAcrossCells(sce,
+  ids = DataFrame(sample = sce$sample_id, cell_type = sce$cell_type))
+
+# Run DESeq2 on one cell type
+ct <- "CD8+ T"
+pb_ct <- pb_sce[, pb_sce$cell_type == ct]
+
+dds <- DESeqDataSetFromMatrix(
+  countData = counts(pb_ct),
+  colData = colData(pb_ct),
+  design = ~ condition  # e.g., treatment vs control
+)
+dds <- DESeq(dds)
+res <- results(dds, alpha = 0.05)
+```
+
+### Pseudobulk with decoupleR (Python)
+
+```python
+import decoupler as dc
+
+# Aggregate counts by sample + cell_type
+pdata = dc.get_pseudobulk(
+    adata, sample_col="sample_id", groups_col="cell_type",
+    layer="counts", min_cells=10, min_counts=1000
+)
+
+# Run DESeq2 via decoupler's wrapper
+dc.deseq2(pdata, design="~condition")
+# Results in pdata.uns with log2FC, padj per gene per cell type
+```
+
+---
+
+## Trajectory Inference
+
+### Method Selection
+
+```
+Which trajectory method?
+
+  Want cluster-level connectivity (which cell types connect)?
+    -> PAGA (scanpy, fast, no assumptions about topology)
+    -> Run first to understand the coarse structure.
+
+  Want continuous pseudotime along a lineage?
+    -> Diffusion pseudotime (scanpy sc.tl.dpt) — needs a root cell
+    -> Monocle3 order_cells() — learns a graph, picks root interactively
+
+  Want RNA velocity (transcriptional dynamics)?
+    -> scVelo dynamical mode — requires spliced/unspliced counts from velocyto/STARsolo
+    -> Caveat: assumes active transcription. Fails for stable/mature populations.
+    -> Validate with CellRank 2 for fate probabilities.
+
+  Branching trajectories?
+    -> Monocle3: learns principal graph with automatic branch point detection.
+    -> PAGA + DPT: use PAGA for topology, DPT for pseudotime per branch.
+```
+
+### PAGA + Diffusion Pseudotime (scanpy)
+
+```python
+# PAGA: cluster-level trajectory graph
+sc.tl.paga(adata, groups="leiden")
+sc.pl.paga(adata, threshold=0.03, show=True)
+# Edges = statistically supported connections between clusters
+# threshold: remove weak edges (default 0.03)
+
+# Initialize UMAP with PAGA for better trajectory layout
+sc.tl.umap(adata, init_pos="paga")
+
+# Diffusion pseudotime (requires a root cell)
+adata.uns["iroot"] = int(np.where(adata.obs["cell_type"] == "HSC")[0][0])
+sc.tl.diffmap(adata)
+sc.tl.dpt(adata)
+sc.pl.umap(adata, color=["dpt_pseudotime", "cell_type"])
+```
+
+### Monocle3 (R)
+
+```r
+library(monocle3)
+
+# Convert from Seurat
+cds <- as.cell_data_set(obj)  # requires SeuratWrappers
+cds <- preprocess_cds(cds, num_dim = 30)
+cds <- reduce_dimension(cds)
+cds <- cluster_cells(cds)
+
+# Learn trajectory graph
+cds <- learn_graph(cds)
+
+# Order cells (select root interactively or programmatically)
+cds <- order_cells(cds, root_cells = root_cell_ids)
+# root_cell_ids: barcodes of cells at the trajectory start (e.g., stem cells)
+
+plot_cells(cds, color_cells_by = "pseudotime", cell_size = 0.5)
+
+# Find genes that change along the trajectory
+trajectory_genes <- graph_test(cds, neighbor_graph = "principal_graph")
+sig_genes <- trajectory_genes[trajectory_genes$q_value < 0.05, ]
+```
+
+### RNA Velocity (scVelo)
+
+```python
+import scvelo as scv  # v0.3+
+
+# Requires spliced/unspliced counts (from velocyto or STARsolo)
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+
+# Dynamical mode — fits full kinetic ODE per gene
+scv.tl.recover_dynamics(adata)
+scv.tl.velocity(adata, mode="dynamical")
+scv.tl.velocity_graph(adata)
+
+scv.pl.velocity_embedding_stream(adata, basis="umap", color="cell_type")
+
+# Velocity confidence: low confidence = unreliable direction
+scv.tl.velocity_confidence(adata)
+# adata.obs["velocity_confidence"] — filter genes/cells with low values
+```
+
+```
+RNA velocity caveats:
+  Requires active transcription dynamics (splicing timescale ~ hours).
+  Fails for: PBMCs (mature, stable), slow diseases, steady-state populations.
+  Contradictory results reported on some datasets (opposite directions).
+  Always validate with known biology before interpreting velocity arrows.
+  Consider CellRank 2 for fate analysis — it works with or without velocity.
+```
+
+---
+
+## Cell-Cell Communication
+
+### CellChat v2 (R)
+
+```r
+library(CellChat)  # v2.1+, from jinworks/CellChat
+
+# Create CellChat object from Seurat
+cellchat <- createCellChat(obj, group.by = "cell_type")
+
+# Set ligand-receptor database
+CellChatDB <- CellChatDB.human  # or CellChatDB.mouse
+cellchat@DB <- CellChatDB
+
+# Inference pipeline
+cellchat <- subsetData(cellchat)
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+cellchat <- computeCommunProb(cellchat)
+cellchat <- computeCommunProbPathway(cellchat)
+cellchat <- aggregateNet(cellchat)
+
+# Visualization
+netVisual_aggregate(cellchat, signaling = "CXCL")
+netVisual_bubble(cellchat, sources.use = c("CD8+ T"), targets.use = c("Macrophage"))
+netAnalysis_computeCentrality(cellchat, slot.name = "netP")
+```
+
+### LIANA+ (Python — consensus across methods)
+
+```python
+import liana as li
+
+# LIANA wraps 7 methods and computes consensus rankings
+li.mt.rank_aggregate(
+    adata,
+    groupby="cell_type",
+    resource_name="consensus",  # OmniPath consensus resource
+    verbose=True
+)
+
+# Results in adata.uns["liana_res"]
+liana_res = adata.uns["liana_res"]
+# Columns: source, target, ligand_complex, receptor_complex,
+#   magnitude_rank, specificity_rank (consensus scores)
+
+# Filter top interactions
+top = liana_res[(liana_res["magnitude_rank"] < 0.01)]
+
+# Visualization
+li.pl.dotplot(adata, colour="magnitude_rank", size="specificity_rank",
+  source_labels=["CD8+ T"], target_labels=["Macrophage"])
+```
+
+```
+CellChat vs LIANA:
+  CellChat: single method, rich curated database (1000+ interactions), R only,
+    built-in spatial support (v2), best visualization.
+  LIANA: consensus across 7 methods, flexible databases (OmniPath, CellPhoneDB, etc.),
+    Python + R, higher confidence (cross-method agreement).
+  For publication: run both and report concordant interactions.
+```
+
+---
+
+## Transcription Factor Activity
+
+```
+For TF activity scoring, decoupleR + CollecTRI is now preferred over pySCENIC
+for most use cases. It is faster, less prone to overfitting (uses pre-defined
+regulons rather than inferring from the same data), and benchmarks favorably.
+
+Use pySCENIC only when you need to discover novel TF-target relationships
+specific to your dataset.
+```
+
+### decoupleR (Python — recommended for TF activity)
+
+```python
+import decoupler as dc
+
+# Get CollecTRI regulons (curated TF-target interactions)
+net = dc.get_collectri(organism="human", split_complexes=False)
+
+# Score TF activities per cell
+dc.run_ulm(adata, net=net, source="source", target="target", weight="weight")
+# Results in adata.obsm["ulm_estimate"] (activity scores)
+# and adata.obsm["ulm_pvals"]
+
+# Visualize TF activities on UMAP
+acts = dc.get_acts(adata, obsm_key="ulm_estimate")
+sc.pl.umap(acts, color=["PAX5", "SPI1", "GATA1"], vcenter=0, cmap="RdBu_r")
+# PAX5 high in B cells, SPI1 in myeloid, GATA1 in erythroid
+```
+
+### decoupleR (R)
+
+```r
+library(decoupleR)
+
+net <- get_collectri(organism = "human", split_complexes = FALSE)
+# Run ULM (univariate linear model) on the expression matrix
+acts <- run_ulm(mat = obj[["RNA"]]$data, net = net, .source = "source",
+  .target = "target", .mor = "mor", minsize = 5)
+```
+
+### pySCENIC (for novel GRN discovery)
+
+```python
+# Only use when discovering dataset-specific regulatory networks
+# Requires: pyscenic, arboreto, ctxcore
+
+from pyscenic.utils import modules_from_adjacencies
+from pyscenic.prune import prune2df, df2regulons
+from pyscenic.aucell import aucell
+from arboreto.algo import grnboost2
+
+# Step 1: infer co-expression modules (slow — hours for large datasets)
+adjacencies = grnboost2(expression_data, tf_names=tf_list, seed=42)
+
+# Step 2: prune with cis-regulatory motif analysis
+modules = modules_from_adjacencies(adjacencies, expression_data)
+# Requires ranking databases (hg38 feather files from cisTarget)
+df = prune2df(dbs, modules, "motifs-v10-nr.hgnc-m0.001-o0.0.tbl")
+regulons = df2regulons(df)
+
+# Step 3: score regulon activity per cell
+auc_mtx = aucell(expression_data, regulons)
+```
+
 ## Output Specification
 
 | Output | Format | Description |
@@ -726,6 +1034,12 @@ DotPlot(obj, features = c("IL7R", "CD8A", "MS4A1", "GNLY", "CD14",
 | `cluster_markers.csv` | CSV | Top markers per cluster from FindAllMarkers |
 | `cell_annotations.csv` | CSV | Per-cell type assignments (automated + manual) |
 | `umap_plot.pdf` | PDF | UMAP colored by cluster, batch, cell type |
+| `pseudobulk_de.csv` | CSV | DESeq2 results per cell type (log2FC, padj) |
+| `trajectory_pseudotime.csv` | CSV | Per-cell pseudotime values |
+| `velocity_embedding.pdf` | PDF | RNA velocity stream plot on UMAP |
+| `cellchat_network.rds` | RDS | CellChat object with communication probabilities |
+| `liana_results.csv` | CSV | Consensus L-R interaction rankings |
+| `tf_activities.csv` | CSV | decoupleR TF activity scores per cell/cluster |
 | `qc_violin.pdf` | PDF | Violin plots of nCount, nFeature, percent.mt |
 
 ## Validation Checks
@@ -801,6 +1115,15 @@ Annotation:
 13. **Clustering on UMAP coordinates**: UMAP distorts distances and densities. Always cluster on PCA or integrated embeddings (Harmony, scVI latent space), never on UMAP dimensions.
 14. **Single resolution without validation**: Picking resolution = 0.5 without checking is arbitrary. Use clustree, silhouette scores, or marker gene validation to support the choice.
 15. **Automated annotation without marker validation**: CellTypist and scType provide a starting point, not ground truth. Always check top markers per cluster against known biology for the tissue. Automated tools can mislabel rare or novel cell types.
+
+### Differential Expression
+16. **Wilcoxon/t-test for cross-condition DE**: Treating cells as independent replicates inflates significance massively. Use pseudobulk (aggregate by sample + cell type, then DESeq2). Cell-level tests are only appropriate for marker discovery within a single sample.
+17. **Pseudobulk on normalized data**: Aggregate raw counts, not normalized values. DESeq2 needs integers and handles normalization internally.
+
+### Trajectory and Communication
+18. **RNA velocity on stable populations**: Velocity requires active transcription dynamics. PBMCs, terminally differentiated cells, and chronic disease states produce meaningless velocity arrows. Check velocity confidence scores and validate against known biology.
+19. **Over-interpreting cell communication rankings**: Both CellChat and LIANA rank L-R pairs by statistical enrichment, not by biological activity. High-ranked interactions are hypotheses for validation, not confirmed communication events.
+20. **pySCENIC for TF activity scoring**: pySCENIC infers GRNs from the same data it scores, creating overfitting risk. For TF activity scoring alone (not GRN discovery), decoupleR with CollecTRI regulons is faster and more reproducible.
 
 ## Related Skills
 
