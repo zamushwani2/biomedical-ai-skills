@@ -11,7 +11,7 @@ SKILL.md files for cancer bioinformatics. Drop one into your project and your AI
 [![R](https://img.shields.io/badge/R-≥_4.3-276DC3?style=flat-square&logo=r&logoColor=white&labelColor=1a1a2e)](https://www.r-project.org/)
 [![Bioconductor](https://img.shields.io/badge/Bioconductor-3.19-87b13f?style=flat-square&labelColor=1a1a2e)](https://bioconductor.org/)
 [![TCGA](https://img.shields.io/badge/TCGA-GDC_Portal-e84d3c?style=flat-square&labelColor=1a1a2e)](https://portal.gdc.cancer.gov/)
-[![Skills](https://img.shields.io/badge/Skills-3-00d9ff?style=flat-square&labelColor=1a1a2e)](skills/)
+[![Skills](https://img.shields.io/badge/Skills-4-00d9ff?style=flat-square&labelColor=1a1a2e)](skills/)
 
 **Works with** Claude Code · Cursor · Codex CLI · Gemini CLI
 
@@ -35,6 +35,7 @@ graph LR
 | [`cancer-multiomics`](skills/cancer-multiomics/) | Multi-omics analysis for [TCGA](https://portal.gdc.cancer.gov/)/[GEO](https://www.ncbi.nlm.nih.gov/geo/) — expression ([DESeq2](https://bioconductor.org/packages/DESeq2/)), mutation ([maftools](https://bioconductor.org/packages/maftools/)), CNV ([GISTIC2](https://www.broadinstitute.org/cancer/cga/gistic)), methylation ([minfi](https://bioconductor.org/packages/minfi/), [DMRcate](https://bioconductor.org/packages/DMRcate/)) | [TCGA-LUAD](skills/cancer-multiomics/tests/) |
 | [`immune-deconvolution`](skills/immune-deconvolution/) | Tumor microenvironment estimation via [immunedeconv](https://omnideconv.org/immunedeconv/) — [quanTIseq](https://icbi.i-med.ac.at/software/quantiseq/doc/), [EPIC](https://github.com/GfellerLab/EPIC), CIBERSORT, [xCell](https://xcell.ucsf.edu/), [MCP-counter](https://github.com/ebecht/MCPcounter), TIMER, ESTIMATE, tumor purity correction | [TCGA-BRCA](skills/immune-deconvolution/tests/) |
 | [`survival-analysis`](skills/survival-analysis/) | Time-to-event analysis — Kaplan-Meier ([ggsurvfit](https://www.danieldsjoberg.com/ggsurvfit/)), Cox PH ([survival](https://cran.r-project.org/package=survival)), competing risks ([tidycmprsk](https://mskcc-epi-bio.github.io/tidycmprsk/)), RMST ([survRM2](https://cran.r-project.org/package=survRM2)), optimal cutpoints, forest plots | [TCGA-GBM](skills/survival-analysis/tests/) |
+| [`single-cell-atlas`](skills/single-cell-atlas/) | scRNA-seq QC and preprocessing — MAD-based filtering, doublet detection ([scDblFinder](https://bioconductor.org/packages/scDblFinder/), [Scrublet](https://github.com/swolock/scrublet)), normalization ([SCTransform](https://satijalab.org/seurat/articles/sctransform_vignette), [scran](https://bioconductor.org/packages/scran/)), feature selection. Dual-language: [Seurat v5](https://satijalab.org/seurat/) (R) + [scanpy](https://scanpy.readthedocs.io/) (Python) | — |
 
 ## Quick start
 
@@ -42,16 +43,11 @@ graph LR
 git clone https://github.com/zamushwani2/biomedical-ai-skills.git
 ```
 
-Copy one or more skills into your project:
+Copy a skill into your project:
 
 ```bash
-# Claude Code — single skill
-cp skills/cancer-multiomics/SKILL.md your-project/.claude/skills/cancer-multiomics.md
-
-# Claude Code — full pipeline (multiomics → deconvolution → survival)
+# Claude Code
 cp skills/cancer-multiomics/SKILL.md your-project/.claude/skills/
-cp skills/immune-deconvolution/SKILL.md your-project/.claude/skills/
-cp skills/survival-analysis/SKILL.md your-project/.claude/skills/
 
 # Cursor
 cp skills/cancer-multiomics/SKILL.md your-project/.cursor/skills/
@@ -59,8 +55,6 @@ cp skills/cancer-multiomics/SKILL.md your-project/.cursor/skills/
 # Any agent that reads SKILL.md
 cp skills/cancer-multiomics/SKILL.md your-project/SKILL.md
 ```
-
-Skills cross-reference each other — the agent can chain multiomics data retrieval through deconvolution into survival modeling.
 
 ## What's a SKILL.md?
 
