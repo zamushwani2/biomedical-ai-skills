@@ -1,6 +1,6 @@
 # Single-Cell Atlas Construction
 
-QC, preprocessing, and normalization of single-cell RNA-seq data using Seurat v5 (R) and scanpy (Python). Covers MAD-based quality filtering, doublet detection, normalization, and feature selection.
+QC, preprocessing, integration, clustering, and cell type annotation of single-cell RNA-seq data using Seurat v5 (R) and scanpy (Python). Covers MAD-based quality filtering, doublet detection, normalization, batch integration, Leiden clustering, and automated annotation.
 
 ## When to Use This Skill
 
@@ -11,6 +11,10 @@ Activate when the user requests:
 - Normalization of UMI count matrices
 - Feature selection for dimensionality reduction
 - Processing scRNA-seq data before integration, clustering, or annotation
+- Batch integration across samples or experiments
+- Clustering and resolution selection
+- Automated or marker-based cell type annotation
+- UMAP visualization
 
 ## Inputs
 
@@ -374,6 +378,340 @@ Feature selection guidelines:
 
 ---
 
+---
+
+## Dimensionality Reduction
+
+### PCA
+
+#### Seurat
+
+```r
+obj <- RunPCA(obj, npcs = 50, verbose = FALSE)
+# Determine how many PCs to use downstream
+ElbowPlot(obj, ndims = 50)
+# Pick the elbow — typically 15-30 PCs for most datasets
+# Alternatively: use JackStraw (slow) or molecular cross-validation
+```
+
+#### scanpy
+
+```python
+sc.tl.pca(adata, n_comps=50, svd_solver="arpack")
+sc.pl.pca_variance_ratio(adata, n_pcs=50, log=True)
+# Pick PCs where variance ratio flattens — typically 15-30
+```
+
+### UMAP
+
+```
+UMAP is for visualization only. Never cluster on UMAP coordinates.
+Distances between clusters in UMAP do NOT reflect biological similarity.
+Cluster size does not reflect heterogeneity.
+
+Parameters that matter:
+  n_neighbors: 10-30 (default 15). Lower = more local detail, higher = broader topology.
+  min_dist: 0.1-0.5 (default 0.1). Lower = tighter clusters, higher = more spread.
+  For cell type identification: min_dist = 0.1-0.3
+  For trajectory visualization: min_dist = 0.3-0.5
+```
+
+#### Seurat
+
+```r
+obj <- FindNeighbors(obj, dims = 1:30)
+obj <- RunUMAP(obj, dims = 1:30, min.dist = 0.3, n.neighbors = 30)
+DimPlot(obj, reduction = "umap", group.by = "cell_type")
+```
+
+#### scanpy
+
+```python
+sc.pp.neighbors(adata, n_neighbors=15, n_pcs=30)
+sc.tl.umap(adata, min_dist=0.3)
+sc.pl.umap(adata, color=["cell_type", "batch"])
+```
+
+---
+
+## Batch Integration
+
+### Method Selection
+
+```
+Which integration method?
+
+  Few batches (2-5), similar cell compositions?
+    -> Harmony: fast, works in PCA space, no GPU needed.
+    -> RPCA (Seurat): conservative, preserves biology well.
+
+  Many batches (>5), different cell compositions across batches?
+    -> scVI: deep generative model, handles complex batch effects.
+    -> CCA (Seurat): finds shared correlation structure across batches.
+
+  Have partial cell type labels?
+    -> scANVI: semi-supervised, uses labels for better integration.
+    -> Best overall performer when labels are available (scIB benchmark).
+
+  Very large dataset (>500k cells)?
+    -> Harmony: scales linearly, runs in seconds on PCA.
+    -> Seurat v5 sketch-based: subsamples, integrates sketch, projects back.
+
+  Simple/fast first pass?
+    -> Harmony. Works well for most cases and takes < 1 minute.
+
+  Evaluate integration quality?
+    -> scib-metrics: batch ASW, graph iLISI (mixing), cell type ASW, NMI (conservation).
+    -> Scoring: 40% batch removal + 60% biological conservation.
+```
+
+### Harmony (R)
+
+```r
+library(harmony)  # v1.2+
+
+# Run on PCA embeddings — fast, no GPU needed
+obj <- RunHarmony(obj, group.by.vars = "batch", dims.use = 1:30)
+# theta = 2 (default): diversity penalty. Increase to 3-4 for stubborn batch effects.
+# lambda = 1 (default): ridge regression penalty. Decrease for stronger correction.
+
+# Use harmony reduction for downstream steps
+obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30)
+obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30)
+obj <- FindClusters(obj, resolution = 0.5)
+```
+
+### Harmony (scanpy)
+
+```python
+import scanpy.external as sce
+
+sce.pp.harmony_integrate(adata, key="batch", basis="X_pca", adjusted_basis="X_pca_harmony")
+# Use the corrected embedding for neighbors/UMAP
+sc.pp.neighbors(adata, use_rep="X_pca_harmony", n_pcs=30)
+sc.tl.umap(adata)
+```
+
+### Seurat v5 IntegrateLayers
+
+```r
+# Split layers by batch (if not already split after merge)
+obj[["RNA"]] <- split(obj[["RNA"]], f = obj$batch)
+
+# Standard workflow: normalize, HVGs, scale, PCA, then integrate
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+
+# Integration — pick one method:
+obj <- IntegrateLayers(obj, method = HarmonyIntegration,
+  orig.reduction = "pca", new.reduction = "harmony")
+
+# Or CCA/RPCA:
+# obj <- IntegrateLayers(obj, method = CCAIntegration,
+#   orig.reduction = "pca", new.reduction = "integrated.cca")
+
+# Rejoin layers before DE analysis
+obj <- JoinLayers(obj)
+```
+
+### scVI (Python)
+
+```python
+import scvi  # v1.4+
+
+# Setup — requires raw counts in a specific layer
+scvi.model.SCVI.setup_anndata(adata, batch_key="batch", layer="counts")
+
+model = scvi.model.SCVI(adata, n_latent=30, n_layers=2, gene_likelihood="nb")
+model.train(max_epochs=400, accelerator="auto")
+# GPU speeds training ~10x but CPU works for < 100k cells
+
+# Get latent representation
+adata.obsm["X_scVI"] = model.get_latent_representation()
+
+# Use for neighbors/UMAP
+sc.pp.neighbors(adata, use_rep="X_scVI")
+sc.tl.umap(adata)
+```
+
+### scANVI (semi-supervised, when partial labels available)
+
+```python
+# Start from a trained scVI model
+scvi.model.SCANVI.setup_anndata(adata, batch_key="batch",
+  labels_key="cell_type", unlabeled_category="Unknown")
+
+scanvi_model = scvi.model.SCANVI.from_scvi_model(model,
+  labels_key="cell_type", unlabeled_category="Unknown")
+scanvi_model.train(max_epochs=20)
+
+adata.obsm["X_scANVI"] = scanvi_model.get_latent_representation()
+adata.obs["predicted_label"] = scanvi_model.predict()
+```
+
+---
+
+## Clustering
+
+### Leiden (preferred over Louvain)
+
+```
+Why Leiden over Louvain:
+  Louvain can produce badly connected communities (internal disconnections).
+  Leiden guarantees well-connected communities.
+  Louvain is no longer maintained. Leiden is the default in Seurat and scanpy.
+```
+
+#### Seurat
+
+```r
+obj <- FindNeighbors(obj, reduction = "harmony", dims = 1:30)
+obj <- FindClusters(obj, algorithm = 4, resolution = 0.5)
+# algorithm = 4 is Leiden. algorithm = 1 is Louvain (legacy).
+# resolution: 0.3-0.5 = coarse, 0.8-1.0 = fine, 1.2+ = very fine
+```
+
+#### scanpy
+
+```python
+sc.tl.leiden(adata, resolution=0.5)
+# Requires leidenalg package
+# sc.tl.louvain() is deprecated as of scanpy 1.12
+```
+
+### Resolution Selection
+
+```
+Picking resolution is one of the hardest choices in scRNA-seq analysis.
+Too low: biologically distinct cell types merged.
+Too high: single cell types split into meaningless subclusters.
+
+Approaches:
+  1. Clustree (R): visualize cluster stability across resolutions 0.1-1.5
+     library(clustree)
+     clustree(obj, prefix = "RNA_snn_res.")
+     Pick the resolution where clusters stabilize (no excessive splitting).
+
+  2. Known biology: if you expect ~9 cell types (PBMCs), resolution 0.4-0.6
+     gives ~8-12 clusters. If you expect ~20 (complex tissue), go higher.
+
+  3. Marker gene validation: run FindAllMarkers at each resolution.
+     Clusters that lack distinct markers at high resolution were over-split.
+
+  4. Silhouette scores: compute per-cluster silhouette on PCA embedding.
+     Low silhouette = poorly separated cluster = likely over-split.
+```
+
+```r
+# Clustree: test multiple resolutions
+library(clustree)
+obj <- FindClusters(obj, algorithm = 4, resolution = seq(0.1, 1.5, 0.1))
+clustree(obj, prefix = "RNA_snn_res.")
+# Pick the highest resolution with stable cluster assignments
+```
+
+---
+
+## Cell Type Annotation
+
+### Decision Tree
+
+```
+Which annotation method?
+
+  Have a reference atlas for the same tissue?
+    -> CellTypist (Python): pre-trained models for immune, lung, gut, brain, etc.
+    -> scANVI: transfer labels from reference during integration.
+
+  Working in Seurat (R) with known tissue type?
+    -> scType: marker-gene database, scores clusters directly.
+    -> Fast, customizable, works on Seurat scale.data.
+
+  No reference, no database matches your tissue?
+    -> Manual annotation with FindAllMarkers + known canonical markers.
+    -> Still the gold standard for novel tissues or rare cell types.
+
+  Want a quick first pass?
+    -> CellTypist with majority_voting=True. Then validate with markers.
+```
+
+### CellTypist (Python)
+
+```python
+import celltypist
+from celltypist import models
+
+# Download models (run once)
+models.download_models(force_update=True)
+
+# Input must be log-normalized to 10,000 counts per cell
+# If adata.X is already log-normalized, proceed directly
+predictions = celltypist.annotate(
+  adata,
+  model="Immune_All_Low.pkl",   # 90 immune subtypes across 20 tissues
+  majority_voting=True           # refines via local subcluster consensus
+)
+
+adata = predictions.to_adata()
+# Adds: adata.obs["predicted_labels"], adata.obs["over_clustering"],
+#   adata.obs["majority_voting"], adata.obs["conf_score"]
+```
+
+### scType (R)
+
+```r
+# Source scType functions from GitHub
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R")
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R")
+
+# Prepare marker gene database
+db <- "https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_full.xlsx"
+gs_list <- gene_sets_prepare(db, "Immune system")
+
+# Score each cell against all cell types
+es <- sctype_score(
+  scRNAseqData = obj[["RNA"]]$scale.data,  # Seurat v5 layer access
+  gs = gs_list$gs_positive,
+  gs2 = gs_list$gs_negative
+)
+
+# Assign cell types to clusters
+cl_results <- do.call("rbind", lapply(unique(obj$seurat_clusters), function(cl) {
+  es_cl <- sort(rowSums(es[, rownames(obj@meta.data[obj$seurat_clusters == cl, ])]),
+    decreasing = TRUE)
+  data.frame(cluster = cl, type = names(es_cl[1]), score = es_cl[1])
+}))
+
+obj$sctype_annotation <- cl_results$type[match(obj$seurat_clusters, cl_results$cluster)]
+```
+
+### Manual Annotation with Markers
+
+```r
+# Find markers for each cluster
+markers <- FindAllMarkers(obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.5)
+
+# Top 5 markers per cluster
+top5 <- markers |> group_by(cluster) |> top_n(5, wt = avg_log2FC)
+
+# Known PBMC markers for reference:
+#   CD4+ T: IL7R, CCR7 (naive), S100A4 (memory)
+#   CD8+ T: CD8A, CD8B
+#   B cells: MS4A1 (CD20), CD79A
+#   NK: GNLY, NKG7, KLRD1
+#   CD14 Mono: CD14, LYZ
+#   FCGR3A Mono: FCGR3A, MS4A7
+#   DC: FCER1A, CST3
+#   Platelets: PPBP
+
+# Dot plot of markers across clusters
+DotPlot(obj, features = c("IL7R", "CD8A", "MS4A1", "GNLY", "CD14",
+  "FCGR3A", "FCER1A", "PPBP"), group.by = "seurat_clusters") +
+  RotatedAxis()
+```
+
 ## Output Specification
 
 | Output | Format | Description |
@@ -383,6 +721,11 @@ Feature selection guidelines:
 | `filtered_object.rds` | RDS | Seurat object after QC, doublet removal, normalization |
 | `filtered_adata.h5ad` | H5AD | AnnData after QC, doublet removal, normalization |
 | `hvg_list.csv` | CSV | Selected highly variable genes |
+| `integrated_object.rds` | RDS | Seurat object after batch integration |
+| `integrated_adata.h5ad` | H5AD | AnnData after integration with latent embedding |
+| `cluster_markers.csv` | CSV | Top markers per cluster from FindAllMarkers |
+| `cell_annotations.csv` | CSV | Per-cell type assignments (automated + manual) |
+| `umap_plot.pdf` | PDF | UMAP colored by cluster, batch, cell type |
 | `qc_violin.pdf` | PDF | Violin plots of nCount, nFeature, percent.mt |
 
 ## Validation Checks
@@ -412,6 +755,22 @@ Feature selection:
 Doublet detection:
   Expected doublets for 3k cells: 20-60 (~1-2%)
   If > 10% flagged: check threshold or consider the data has quality issues
+
+Integration (multi-sample):
+  After Harmony/scVI, UMAP should show batches interleaved, not separated
+  Cell types should remain distinct (batch correction ≠ biological erasure)
+  If all cell types collapse into one blob: over-correction (reduce theta or lambda)
+
+Clustering (PBMC 3k at resolution 0.5):
+  Expect 8-12 clusters
+  CD4 T, CD8 T, B cells, NK, CD14 Mono, FCGR3A Mono, DC, Platelets should separate
+  If only 3-4 clusters: resolution too low
+  If >20 clusters: resolution too high, check with clustree
+
+Annotation:
+  CellTypist with Immune_All_Low on PBMCs should identify all major types
+  scType with "Immune system" database should score CD14 Mono, B cells, NK correctly
+  Manual markers: IL7R for CD4 T, CD8A for CD8 T, MS4A1 for B, CD14 for Mono, GNLY for NK
 ```
 
 ## Common Pitfalls
@@ -432,6 +791,16 @@ Doublet detection:
 
 ### Feature Selection
 9. **Running HVG selection on normalized data with seurat_v3 flavor**: The `seurat_v3` flavor in scanpy expects raw counts, not log-normalized data. Using the wrong flavor silently produces bad HVG rankings.
+
+### Integration
+10. **Integrating before QC and doublet removal**: Batch integration amplifies artifacts from low-quality cells and doublets. Always QC and remove doublets per sample first, then merge and integrate.
+11. **Over-correction erasing biology**: If cell types that should be distinct merge after integration, the method is too aggressive. Reduce Harmony `theta`, increase scVI `n_latent`, or try a more conservative method (RPCA).
+12. **Not joining layers before DE in Seurat v5**: After `IntegrateLayers()`, each sample's counts are still in separate layers. Call `JoinLayers()` before `FindAllMarkers()` or DE analysis will fail or use only one sample's data.
+
+### Clustering and Annotation
+13. **Clustering on UMAP coordinates**: UMAP distorts distances and densities. Always cluster on PCA or integrated embeddings (Harmony, scVI latent space), never on UMAP dimensions.
+14. **Single resolution without validation**: Picking resolution = 0.5 without checking is arbitrary. Use clustree, silhouette scores, or marker gene validation to support the choice.
+15. **Automated annotation without marker validation**: CellTypist and scType provide a starting point, not ground truth. Always check top markers per cluster against known biology for the tissue. Automated tools can mislabel rare or novel cell types.
 
 ## Related Skills
 
